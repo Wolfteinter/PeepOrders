@@ -145,7 +145,7 @@ export function HomePage() {
         <div className="panel home-catalog-panel" id="catalogo">
           <div className="home-section-heading">
             <div>
-              <h2>Catalogo listo para explorar</h2>
+              <h2>Productos</h2>
             </div>
             {usingFallback ? (
               <span className="badge">Modo demo</span>
