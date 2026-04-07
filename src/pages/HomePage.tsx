@@ -151,7 +151,7 @@ export function HomePage() {
             {usingFallback ? (
               <span className="badge">Modo demo</span>
             ) : (
-              <span className="badge">Datos en vivo</span>
+              null
             )}
           </div>
 
