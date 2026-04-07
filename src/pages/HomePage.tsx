@@ -12,6 +12,7 @@ export function HomePage() {
   const [error, setError] = useState('');
   const [usingFallback, setUsingFallback] = useState(false);
   const [searchValue, setSearchValue] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
@@ -55,10 +56,29 @@ export function HomePage() {
     };
   }, []);
 
+  const categoryOptions = useMemo(() => {
+    const categories = new Set<string>();
+
+    products.forEach((product) => {
+      if (product.category?.trim()) {
+        categories.add(product.category.trim());
+      }
+    });
+
+    return ['all', ...Array.from(categories).sort((left, right) => left.localeCompare(right))];
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
 
     return products.filter((product) => {
+      const matchesCategory =
+        activeCategory === 'all' || (product.category ?? 'Catalogo general') === activeCategory;
+
+      if (!matchesCategory) {
+        return false;
+      }
+
       if (!normalizedSearch) {
         return true;
       }
@@ -74,7 +94,9 @@ export function HomePage() {
 
       return haystack.includes(normalizedSearch);
     });
-  }, [products, searchValue]);
+  }, [activeCategory, products, searchValue]);
+
+  const visibleProductCount = filteredProducts.length;
 
   return (
     <>
@@ -90,6 +112,29 @@ export function HomePage() {
                 placeholder="Ej. angel, llavero o figura blanca"
               />
             </label>
+
+            <div className="home-search-summary">
+              <strong>{visibleProductCount}</strong>
+              <span>{visibleProductCount === 1 ? 'resultado' : 'resultados'}</span>
+            </div>
+          </div>
+
+          <div className="home-filter-row" aria-label="Categorias">
+            {categoryOptions.map((category) => {
+              const isActive = activeCategory === category;
+              const label = category === 'all' ? 'Todo' : category;
+
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  className={`home-filter-chip ${isActive ? 'active' : ''}`}
+                  onClick={() => setActiveCategory(category)}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
           {error ? (
@@ -97,7 +142,19 @@ export function HomePage() {
           ) : null}
         </div>
 
-        <div className="panel home-catalog-panel">
+        <div className="panel home-catalog-panel" id="catalogo">
+          <div className="home-section-heading">
+            <div>
+              <span className="eyebrow">Seleccion actual</span>
+              <h2>Catalogo listo para explorar</h2>
+            </div>
+            {usingFallback ? (
+              <span className="badge">Modo demo</span>
+            ) : (
+              <span className="badge">Datos en vivo</span>
+            )}
+          </div>
+
           {loading ? (
             <div className="empty-state">Cargando catalogo...</div>
           ) : (
@@ -105,6 +162,12 @@ export function HomePage() {
               {filteredProducts.map((product) => (
                 <article key={product.id} className="product-card">
                   <div className="product-image-shell">
+                    <div className="product-card-badges">
+                      <span className="product-card-badge">
+                        {product.category ?? 'Catalogo general'}
+                      </span>
+                    </div>
+
                     {product.image_url ? (
                       <img
                         src={product.image_url}
@@ -121,25 +184,19 @@ export function HomePage() {
                   <div className="product-card-copy">
                     <div className="product-card-top">
                       <div>
-                        <p className="product-category">
-                          {product.category ?? 'Catalogo general'}
-                        </p>
                         <h3>{product.name}</h3>
                       </div>
                       <strong>{formatCurrency(product.price)}</strong>
                     </div>
-
-                    <p className="product-owner">
-                      {product.owner?.name ?? 'PeepOrders'}
-                    </p>
-
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => setSelectedProduct(product)}
-                    >
-                      Ver detalles
-                    </button>
+                    {product.tags?.length ? (
+                      <div className="product-card-tags">
+                        {product.tags.slice(0, 3).map((tag) => (
+                          <span key={`${product.id}-${tag}`} className="badge">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               ))}
@@ -198,12 +255,38 @@ export function HomePage() {
                 <p className="product-detail-meta">
                   Precio: <strong>{formatCurrency(selectedProduct.price)}</strong>
                 </p>
+
+                <div className="product-detail-facts">
+                  <div className="product-detail-fact">
+                    <span>Variantes</span>
+                    <strong>{selectedProduct.variants.length || 'Base'}</strong>
+                  </div>
+                </div>
+
                 {selectedProduct.tags?.length ? (
                   <div className="product-tags">
                     {selectedProduct.tags.map((tag) => (
                       <span key={`${selectedProduct.id}-${tag}`} className="badge">
                         {tag}
                       </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {selectedProduct.variants.length ? (
+                  <div className="product-variant-list">
+                    {selectedProduct.variants.map((variant, index) => (
+                      <div
+                        key={variant.id ?? `${selectedProduct.id}-variant-${index}`}
+                        className="product-variant-card"
+                      >
+                        <span>{variant.name ?? `Variante ${index + 1}`}</span>
+                        {typeof variant.price === 'number' ? (
+                          <strong>{formatCurrency(variant.price)}</strong>
+                        ) : (
+                          <strong>Consultar</strong>
+                        )}
+                      </div>
                     ))}
                   </div>
                 ) : null}
