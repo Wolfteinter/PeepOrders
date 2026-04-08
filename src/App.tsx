@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell';
 import { AdminPage } from './pages/AdminPage';
 import { HomePage } from './pages/HomePage';
 import { PublicPage } from './pages/PublicPage';
+import { RuletaPage } from './pages/RuletaPage';
 
 export default function App() {
   return (
@@ -10,6 +11,7 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
         <Route path="home" element={<Navigate to="/" replace />} />
+        <Route path="ruleta" element={<RuletaPage />} />
         <Route path="seguimiento" element={<PublicPage />} />
         <Route path="admin" element={<AdminPage />} />
       </Route>

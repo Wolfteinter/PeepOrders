@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchProducts, getFallbackProducts } from '../services/productService';
 import { type Product } from '../types/product';
 
@@ -101,6 +102,21 @@ export function HomePage() {
   return (
     <>
       <section className="home-main">
+        <div className="panel home-feature-callout">
+          <div className="home-feature-copy">
+            <span className="eyebrow">Nueva dinamica</span>
+            <h2>Prueba la ruleta de premios</h2>
+            <p>
+              Entra a la ruleta y descubre si te toca descuento, bolsa sorpresa o un
+              llavero.
+            </p>
+          </div>
+
+          <Link to="/ruleta" className="primary-button">
+            Ir a la ruleta
+          </Link>
+        </div>
+
         <div className="home-search-shell">
           <div className="home-search-wrap">
             <label className="home-search-label">

@@ -7,13 +7,14 @@ export function AppShell() {
   const searchParams = new URLSearchParams(location.search);
   const isSharedOrderView =
     location.pathname === '/seguimiento' && Boolean(searchParams.get('order'));
+  const isRuletaView = location.pathname === '/ruleta';
   const showHeaderLogout = location.pathname === '/admin' && Boolean(user);
 
   return (
     <div className="app-shell">
       <div className="ambient ambient-left" />
       <div className="ambient ambient-right" />
-      {!isSharedOrderView ? (
+      {!isSharedOrderView && !isRuletaView ? (
         <header className="site-header">
           <Link to="/" className="brand">
             <img
@@ -38,7 +39,11 @@ export function AppShell() {
         </header>
       ) : null}
 
-      <main className={`page-wrap ${isSharedOrderView ? 'page-wrap-shared' : ''}`}>
+      <main
+        className={`page-wrap ${isSharedOrderView ? 'page-wrap-shared' : ''} ${
+          isRuletaView ? 'page-wrap-ruleta' : ''
+        }`}
+      >
         <Outlet />
       </main>
     </div>
