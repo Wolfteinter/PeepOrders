@@ -155,13 +155,13 @@ function normalizeItems(
                 (item.pendingCatalogProduct as Record<string, unknown>).name ??
                   description,
               ).trim(),
-              ownerId:
-                (item.pendingCatalogProduct as Record<string, unknown>).ownerId
-                  ? String(
-                      (item.pendingCatalogProduct as Record<string, unknown>)
-                        .ownerId,
-                    )
-                  : undefined,
+              ...((item.pendingCatalogProduct as Record<string, unknown>).ownerId
+                ? {
+                    ownerId: String(
+                      (item.pendingCatalogProduct as Record<string, unknown>).ownerId,
+                    ),
+                  }
+                : {}),
               cost: normalizeNonNegativeNumber(
                 (item.pendingCatalogProduct as Record<string, unknown>).cost,
               ),

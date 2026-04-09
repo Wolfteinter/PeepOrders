@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   fetchOwners,
-  fetchProducts,
   getFallbackOwners,
   getConfiguredProductOwnerId,
 } from '../services/productService';
@@ -10,9 +9,10 @@ import {
   orderStatuses,
   statusLabelMap,
   type Order,
+  type OrderItem,
   type OrderInput,
 } from '../types/order';
-import { type CatalogOwner, type Product } from '../types/product';
+import { type CatalogOwner } from '../types/product';
 
 interface OrderFormProps {
   editingOrder?: Order | null;
@@ -22,17 +22,12 @@ interface OrderFormProps {
   currentUserLabel: string;
 }
 
-type ProductMode = 'existing' | 'new';
-
 interface FormItemState {
-  mode: ProductMode;
-  selectedProductId: string;
-  searchQuery: string;
+  productMode: 'existing' | 'new';
+  productId: string;
+  catalogSyncedAt: string;
   description: string;
-  price: string;
   cost: string;
-  category: string;
-  tags: string;
   quantity: string;
 }
 
@@ -47,14 +42,11 @@ interface OrderFormState {
 }
 
 const initialItem: FormItemState = {
-  mode: 'existing',
-  selectedProductId: '',
-  searchQuery: '',
+  productMode: 'new',
+  productId: '',
+  catalogSyncedAt: '',
   description: '',
-  price: '',
   cost: '',
-  category: '',
-  tags: '',
   quantity: '1',
 };
 
@@ -68,29 +60,15 @@ const initialState: OrderFormState = {
   status: 'created',
 };
 
-function getProductSearchText(product: Product) {
-  return [
-    product.name,
-    product.category ?? '',
-    ...(product.tags ?? []),
-  ]
-    .join(' ')
-    .toLowerCase();
-}
-
 export function OrderForm({
   editingOrder,
   onSubmit,
-  onCancelEdit,
+  onCancelEdit: _onCancelEdit,
   submitError = '',
   currentUserLabel,
 }: OrderFormProps) {
   const [form, setForm] = useState<OrderFormState>(initialState);
-  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [owners, setOwners] = useState<CatalogOwner[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
-  const [productsError, setProductsError] = useState('');
-  const [productsNotice, setProductsNotice] = useState('');
   const [ownersLoading, setOwnersLoading] = useState(false);
   const [ownersError, setOwnersError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -99,47 +77,9 @@ export function OrderForm({
   const totalPrice = calculateOrderPrice(
     form.items.map((item) => ({
       description: item.description.trim(),
-      price: Number(item.price) || 0,
+      price: (Number(item.cost) || 0) * (Number(item.quantity) || 0),
     })),
   );
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadCatalogProducts() {
-      setProductsLoading(true);
-      setProductsError('');
-
-      try {
-        const result = await fetchProducts();
-        if (!isMounted) {
-          return;
-        }
-
-        setCatalogProducts(result);
-      } catch (error) {
-        if (!isMounted) {
-          return;
-        }
-
-        setProductsError(
-          error instanceof Error
-            ? error.message
-            : 'No se pudo cargar el catalogo de productos.',
-        );
-      } finally {
-        if (isMounted) {
-          setProductsLoading(false);
-        }
-      }
-    }
-
-    void loadCatalogProducts();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -188,7 +128,6 @@ export function OrderForm({
         createdBy: currentUserLabel,
       });
       setLocalError('');
-      setProductsNotice('');
       return;
     }
 
@@ -196,15 +135,12 @@ export function OrderForm({
       items: editingOrder.items.length
         ? editingOrder.items.map((item) => ({
             ...initialItem,
-            mode: 'existing',
+            productMode: item.productMode ?? (item.productId ? 'existing' : 'new'),
+            productId: item.productId ?? '',
+            catalogSyncedAt: item.catalogSyncedAt ?? '',
             description: item.description,
-            price: String(item.price),
             cost: String(item.pendingCatalogProduct?.cost ?? item.price),
-            category: item.pendingCatalogProduct?.category ?? '',
-            tags: (item.pendingCatalogProduct?.tags ?? []).join(', '),
             quantity: String(item.pendingCatalogProduct?.quantity ?? 1),
-            searchQuery: item.description,
-            selectedProductId: item.productId ?? '',
           }))
         : [{ ...initialItem }],
       notes: editingOrder.notes ?? '',
@@ -215,14 +151,9 @@ export function OrderForm({
       status: editingOrder.status,
     });
     setLocalError('');
-    setProductsNotice('');
   }, [currentUserLabel, editingOrder]);
 
-  function updateItem(
-    index: number,
-    field: keyof FormItemState,
-    value: string | boolean,
-  ) {
+  function updateItem(index: number, field: keyof FormItemState, value: string) {
     setForm((current) => ({
       ...current,
       items: current.items.map((item, itemIndex) =>
@@ -230,26 +161,6 @@ export function OrderForm({
           ? {
               ...item,
               [field]: value,
-            }
-          : item,
-      ),
-    }));
-  }
-
-  function setItemMode(index: number, mode: ProductMode) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...initialItem,
-              mode,
-              description: mode === 'new' ? item.description : '',
-              price: mode === 'new' ? item.price : '',
-              cost: mode === 'new' ? item.cost : '',
-              category: mode === 'new' ? item.category : '',
-              tags: mode === 'new' ? item.tags : '',
-              quantity: mode === 'new' ? item.quantity : '1',
             }
           : item,
       ),
@@ -279,62 +190,39 @@ export function OrderForm({
     });
   }
 
-  function selectExistingProduct(index: number, product: Product) {
-    setProductsNotice('');
-    setForm((current) => ({
-      ...current,
-      items: current.items.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              mode: 'existing',
-              selectedProductId: product.id,
-              searchQuery: product.name,
-              description: product.name,
-              price: String(product.price),
-              cost: String(product.cost || product.price),
-              category: product.category ?? '',
-              tags: (product.tags ?? []).join(', '),
-              quantity: String(product.current_stock || 1),
-            }
-          : item,
-      ),
-    }));
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const ownerId = catalogProducts[0]?.owner_id || getConfiguredProductOwnerId();
+    const ownerId = getConfiguredProductOwnerId();
     const normalizedItems = form.items
-      .map((item) => {
+      .map<OrderItem>((item) => {
         const description = item.description.trim();
-        const price = Number(item.price);
         const cost = Number(item.cost);
         const quantity = Number(item.quantity);
+        const price = cost * quantity;
+        const isSyncedCatalogItem = Boolean(item.productId);
 
         return {
           description,
           price,
-          productMode: item.mode,
-          ...(item.mode === 'existing' && item.selectedProductId
-            ? { productId: item.selectedProductId }
-            : {}),
-          ...(item.mode === 'new'
+          productMode: isSyncedCatalogItem ? item.productMode : 'new',
+          ...(isSyncedCatalogItem
             ? {
+                productId: item.productId,
+                ...(item.catalogSyncedAt
+                  ? { catalogSyncedAt: item.catalogSyncedAt }
+                  : {}),
+              }
+            : {
                 pendingCatalogProduct: {
                   name: description,
-                  ownerId: ownerId || undefined,
+                  ...(ownerId ? { ownerId } : {}),
                   cost,
-                  category: item.category.trim() || null,
-                  tags: item.tags
-                    .split(',')
-                    .map((tag) => tag.trim())
-                    .filter(Boolean),
+                  category: null,
+                  tags: [],
                   quantity,
                 },
-              }
-            : {}),
+              }),
         };
       })
       .filter((item) => item.description);
@@ -349,14 +237,14 @@ export function OrderForm({
         (item) => !Number.isFinite(item.price) || item.price <= 0,
       )
     ) {
-      setLocalError('Cada item debe tener un precio valido mayor a 0.');
+      setLocalError('Cada item necesita costo y cantidad validos.');
       return;
     }
 
     if (
       normalizedItems.some(
         (item) =>
-          item.productMode === 'new' &&
+          !item.productId &&
           (!item.pendingCatalogProduct ||
             !Number.isFinite(item.pendingCatalogProduct.cost) ||
             item.pendingCatalogProduct.cost < 0 ||
@@ -364,9 +252,17 @@ export function OrderForm({
             item.pendingCatalogProduct.quantity <= 0),
       )
     ) {
-      setLocalError(
-        'Cada producto nuevo necesita costo y cantidad validos para guardarse en el pedido.',
-      );
+      setLocalError('Cada item necesita costo y cantidad validos.');
+      return;
+    }
+
+    if (!form.createdBy.trim()) {
+      setLocalError('Ingresa quien crea el pedido.');
+      return;
+    }
+
+    if (!form.assignedTo.trim()) {
+      setLocalError('Selecciona a quien se asigna el pedido.');
       return;
     }
 
@@ -376,6 +272,8 @@ export function OrderForm({
     try {
       await onSubmit({
         ...form,
+        createdBy: form.createdBy.trim(),
+        assignedTo: form.assignedTo.trim(),
         items: normalizedItems,
         notes: form.notes.trim() || undefined,
       });
@@ -403,182 +301,79 @@ export function OrderForm({
 
       <div className="form-field-full">
         <span className="form-label">Items del pedido</span>
-        {productsError ? (
-          <p className="error-text form-field-full">{productsError}</p>
-        ) : null}
-        {productsNotice ? (
-          <p className="helper-text form-field-full">{productsNotice}</p>
-        ) : null}
+        <p className="helper-text form-field-full">
+          Captura nombre, cantidad y costo. El total se calcula automaticamente.
+        </p>
 
         <div className="item-editor">
-          {form.items.map((item, index) => {
-            const normalizedQuery = item.searchQuery.trim().toLowerCase();
-            const matchingProducts = normalizedQuery
-              ? catalogProducts
-                  .filter((product) =>
-                    getProductSearchText(product).includes(normalizedQuery),
-                  )
-                  .slice(0, 6)
-              : catalogProducts.slice(0, 6);
-
-            return (
-              <div
-                key={`${editingOrder?.id ?? 'new'}-item-${index}`}
-                className="item-editor-card"
-              >
-                <div className="item-card-top">
-                  <span className="eyebrow">Item {index + 1}</span>
-                  <button
-                    type="button"
-                    className="ghost-button item-row-button"
-                    onClick={() => removeItem(index)}
-                  >
-                    Quitar
-                  </button>
-                </div>
-
-                <div className="item-mode-toggle">
-                  <button
-                    type="button"
-                    className={`item-mode-button ${item.mode === 'existing' ? 'active' : ''}`}
-                    onClick={() => setItemMode(index, 'existing')}
-                  >
-                    Producto existente
-                  </button>
-                  <button
-                    type="button"
-                    className={`item-mode-button ${item.mode === 'new' ? 'active' : ''}`}
-                    onClick={() => setItemMode(index, 'new')}
-                  >
-                    Producto nuevo
-                  </button>
-                </div>
-
-                {item.mode === 'existing' ? (
-                  <div className="item-existing-panel">
-                    <label className="item-catalog-field">
-                      Buscar producto
-                      <input
-                        type="text"
-                        value={item.searchQuery}
-                        onChange={(event) =>
-                          updateItem(index, 'searchQuery', event.target.value)
-                        }
-                        placeholder="Busca por nombre, categoria o tag"
-                      />
-                    </label>
-
-                    <div className="product-search-results">
-                      {matchingProducts.map((product) => (
-                        <button
-                          key={product.id}
-                          type="button"
-                          className={`product-search-result ${
-                            item.selectedProductId === product.id ? 'active' : ''
-                          }`}
-                          onClick={() => selectExistingProduct(index, product)}
-                        >
-                          <span>{product.name}</span>
-                          <strong>${product.price.toFixed(2)}</strong>
-                        </button>
-                      ))}
-                      {!matchingProducts.length ? (
-                        <div className="product-search-empty">
-                          No encontramos productos con esa busqueda.
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="new-product-grid">
-                    <p className="helper-text form-field-full">
-                      Este producto se guardara en Firebase con el pedido y se
-                      publicara en el catalogo cuando el estado cambie a
-                      `Impresa y lista`.
-                    </p>
-                    <label>
-                      Nombre del producto
-                      <input
-                        type="text"
-                        value={item.description}
-                        onChange={(event) =>
-                          updateItem(index, 'description', event.target.value)
-                        }
-                        placeholder="Nombre del producto"
-                      />
-                    </label>
-
-                    <label>
-                      Precio
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={item.price}
-                        onChange={(event) =>
-                          updateItem(index, 'price', event.target.value)
-                        }
-                        placeholder="0.00"
-                      />
-                    </label>
-
-                    <label>
-                      Costo
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.cost}
-                        onChange={(event) =>
-                          updateItem(index, 'cost', event.target.value)
-                        }
-                        placeholder="0.00"
-                      />
-                    </label>
-
-                    <label>
-                      Categoria
-                      <input
-                        type="text"
-                        value={item.category}
-                        onChange={(event) =>
-                          updateItem(index, 'category', event.target.value)
-                        }
-                        placeholder="Categoria"
-                      />
-                    </label>
-
-                    <label className="form-field-full">
-                      Tags
-                      <input
-                        type="text"
-                        value={item.tags}
-                        onChange={(event) =>
-                          updateItem(index, 'tags', event.target.value)
-                        }
-                        placeholder="Separadas por coma"
-                      />
-                    </label>
-
-                    <label>
-                      Cantidad
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateItem(index, 'quantity', event.target.value)
-                        }
-                        placeholder="1"
-                      />
-                    </label>
-                  </div>
-                )}
-
+          {form.items.map((item, index) => (
+            <div
+              key={`${editingOrder?.id ?? 'new'}-item-${index}`}
+              className="item-editor-card"
+            >
+              <div className="item-card-top">
+                <span className="eyebrow">Item {index + 1}</span>
+                <button
+                  type="button"
+                  className="ghost-button item-row-button"
+                  onClick={() => removeItem(index)}
+                >
+                  Quitar
+                </button>
               </div>
-            );
-          })}
+
+              <div className="new-product-grid">
+                <label className="form-field-full">
+                  Nombre del item
+                  <input
+                    type="text"
+                    value={item.description}
+                    onChange={(event) =>
+                      updateItem(index, 'description', event.target.value)
+                    }
+                    placeholder="Nombre del producto"
+                  />
+                </label>
+
+                <label>
+                  Cantidad
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={item.quantity}
+                    onChange={(event) =>
+                      updateItem(index, 'quantity', event.target.value)
+                    }
+                    placeholder="1"
+                  />
+                </label>
+
+                <label>
+                  Costo
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={item.cost}
+                    onChange={(event) => updateItem(index, 'cost', event.target.value)}
+                    placeholder="0.00"
+                  />
+                </label>
+
+                <label>
+                  Total del item
+                  <input
+                    type="text"
+                    value={`$${(
+                      (Number(item.cost) || 0) * (Number(item.quantity) || 0)
+                    ).toFixed(2)}`}
+                    readOnly
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
 
           <button
             type="button"
@@ -591,7 +386,7 @@ export function OrderForm({
       </div>
 
       <label className="form-field-full">
-        Notas opcionales
+        Notas
         <textarea
           value={form.notes}
           onChange={(event) =>
@@ -601,31 +396,24 @@ export function OrderForm({
             }))
           }
           rows={2}
-          placeholder="Informacion adicional para mostrar al cliente"
+          placeholder="Informacion adicional"
         />
       </label>
 
-      <div className="form-row">
-        <label>
-          Total del pedido
-          <input type="text" value={`$${totalPrice.toFixed(2)}`} readOnly />
-        </label>
-
-        <label>
-          Fecha de entrega
-          <input
-            type="date"
-            value={form.deliveryDate}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                deliveryDate: event.target.value,
-              }))
-            }
-            required
-          />
-        </label>
-      </div>
+      <label>
+        Fecha de entrega
+        <input
+          type="date"
+          value={form.deliveryDate}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              deliveryDate: event.target.value,
+            }))
+          }
+          required
+        />
+      </label>
 
       <label>
         Lugar de entrega
@@ -646,7 +434,18 @@ export function OrderForm({
       <div className="form-row">
         <label>
           Creado por
-          <input type="text" value={form.createdBy} readOnly />
+          <input
+            type="text"
+            value={form.createdBy}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                createdBy: event.target.value,
+              }))
+            }
+            placeholder="Nombre de quien crea el pedido"
+            required
+          />
         </label>
 
         <label>
@@ -702,6 +501,11 @@ export function OrderForm({
           ))}
         </div>
       </div>
+
+      <label>
+        Total del pedido
+        <input type="text" value={`$${totalPrice.toFixed(2)}`} readOnly />
+      </label>
 
       {localError ? (
         <p className="error-text form-field-full">{localError}</p>

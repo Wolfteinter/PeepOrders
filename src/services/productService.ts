@@ -3,6 +3,13 @@ import { type CatalogOwner, type Product } from '../types/product';
 const PRODUCTS_API_URL = import.meta.env.VITE_PRODUCTS_API_URL?.trim();
 const PEEPOS_API_KEY = import.meta.env.VITE_PEEPOS_API_KEY?.trim();
 const PEEPOS_OWNER_ID = import.meta.env.VITE_PEEPOS_OWNER_ID?.trim();
+const PRODUCTS_CACHE_KEY = 'peepoorders.products.cache.v1';
+const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+type ProductsCacheRecord = {
+  expiresAt: number;
+  products: Product[];
+};
 
 const demoProducts: Product[] = [
   {
@@ -151,29 +158,116 @@ function getRequestHeaders() {
   };
 }
 
+let productsMemoryCache: ProductsCacheRecord | null = null;
+let productsRequestInFlight: Promise<Product[]> | null = null;
+
+function isProductsCacheValid(cache: ProductsCacheRecord | null) {
+  return Boolean(cache && cache.expiresAt > Date.now());
+}
+
+function readProductsCache() {
+  const memoryCache = productsMemoryCache;
+
+  if (memoryCache && memoryCache.expiresAt > Date.now()) {
+    return memoryCache.products;
+  }
+
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const rawCache = window.localStorage.getItem(PRODUCTS_CACHE_KEY);
+  if (!rawCache) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawCache) as ProductsCacheRecord;
+    if (!isProductsCacheValid(parsed) || !Array.isArray(parsed.products)) {
+      window.localStorage.removeItem(PRODUCTS_CACHE_KEY);
+      return null;
+    }
+
+    productsMemoryCache = parsed;
+    return parsed.products;
+  } catch {
+    window.localStorage.removeItem(PRODUCTS_CACHE_KEY);
+    return null;
+  }
+}
+
+function writeProductsCache(products: Product[]) {
+  const cacheRecord: ProductsCacheRecord = {
+    products,
+    expiresAt: Date.now() + PRODUCTS_CACHE_TTL_MS,
+  };
+
+  productsMemoryCache = cacheRecord;
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(cacheRecord));
+}
+
+function invalidateProductsCache() {
+  productsMemoryCache = null;
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(PRODUCTS_CACHE_KEY);
+}
+
 export function getConfiguredProductOwnerId() {
   return PEEPOS_OWNER_ID || '';
 }
 
-export async function fetchProducts() {
+export async function fetchProducts(options?: { forceRefresh?: boolean }) {
   if (!PRODUCTS_API_URL) {
     throw new Error('Configura VITE_PRODUCTS_API_URL para cargar el catalogo.');
   }
 
-  const response = await fetch(PRODUCTS_API_URL, {
-    headers: getRequestHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`No se pudo cargar el catalogo (${response.status}).`);
+  if (!options?.forceRefresh) {
+    const cachedProducts = readProductsCache();
+    if (cachedProducts) {
+      return cachedProducts;
+    }
+  } else {
+    invalidateProductsCache();
   }
 
-  const payload = (await response.json()) as { data?: Record<string, unknown>[] };
-  const products = Array.isArray(payload.data)
-    ? payload.data.map((item) => normalizeProduct(item))
-    : [];
+  if (productsRequestInFlight) {
+    return productsRequestInFlight;
+  }
 
-  return products.filter((product) => product.active);
+  productsRequestInFlight = (async () => {
+    const response = await fetch(PRODUCTS_API_URL, {
+      headers: getRequestHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`No se pudo cargar el catalogo (${response.status}).`);
+    }
+
+    const payload = (await response.json()) as { data?: Record<string, unknown>[] };
+    const products = Array.isArray(payload.data)
+      ? payload.data.map((item) => normalizeProduct(item))
+      : [];
+
+    const activeProducts = products.filter((product) => product.active);
+    writeProductsCache(activeProducts);
+
+    return activeProducts;
+  })();
+
+  try {
+    return await productsRequestInFlight;
+  } finally {
+    productsRequestInFlight = null;
+  }
 }
 
 export function getFallbackProducts() {
@@ -251,5 +345,14 @@ export async function createCatalogProduct(payload: CreateProductInput) {
       ? payloadData.data
       : payloadData;
 
-  return normalizeProduct(productData);
+  const normalizedProduct = normalizeProduct(productData);
+  const cachedProducts = readProductsCache();
+
+  if (cachedProducts && normalizedProduct.active) {
+    writeProductsCache([normalizedProduct, ...cachedProducts]);
+  } else {
+    invalidateProductsCache();
+  }
+
+  return normalizedProduct;
 }
