@@ -323,45 +323,47 @@ export function OrderForm({
               </div>
 
               <div className="new-product-grid">
+                <div className="item-primary-row">
+                  <label>
+                    Nombre del item
+                    <input
+                      type="text"
+                      value={item.description}
+                      onChange={(event) =>
+                        updateItem(index, 'description', event.target.value)
+                      }
+                      placeholder="Nombre del producto"
+                    />
+                  </label>
+
+                  <label>
+                    Cantidad
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={item.quantity}
+                      onChange={(event) =>
+                        updateItem(index, 'quantity', event.target.value)
+                      }
+                      placeholder="1"
+                    />
+                  </label>
+
+                  <label>
+                    Precio
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={item.cost}
+                      onChange={(event) => updateItem(index, 'cost', event.target.value)}
+                      placeholder="0.00"
+                    />
+                  </label>
+                </div>
+
                 <label className="form-field-full">
-                  Nombre del item
-                  <input
-                    type="text"
-                    value={item.description}
-                    onChange={(event) =>
-                      updateItem(index, 'description', event.target.value)
-                    }
-                    placeholder="Nombre del producto"
-                  />
-                </label>
-
-                <label>
-                  Cantidad
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={item.quantity}
-                    onChange={(event) =>
-                      updateItem(index, 'quantity', event.target.value)
-                    }
-                    placeholder="1"
-                  />
-                </label>
-
-                <label>
-                  Costo
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={item.cost}
-                    onChange={(event) => updateItem(index, 'cost', event.target.value)}
-                    placeholder="0.00"
-                  />
-                </label>
-
-                <label>
                   Total del item
                   <input
                     type="text"

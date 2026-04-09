@@ -1312,6 +1312,7 @@ label {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .item-mode-toggle {
@@ -1340,6 +1341,24 @@ label {
 .new-product-grid {
   display: grid;
   gap: 12px;
+}
+
+.item-primary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.3fr) minmax(120px, 0.7fr) minmax(140px, 0.8fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.item-primary-row > label:first-child,
+.new-product-grid,
+.item-editor,
+.item-editor-card {
+  min-width: 0;
+}
+
+.item-primary-row input {
+  margin-top: 0;
 }
 
 .item-catalog-field {
@@ -1380,7 +1399,23 @@ label {
 }
 
 .new-product-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 920px) {
+  .item-primary-row {
+    grid-template-columns: minmax(0, 1.7fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .item-primary-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .item-primary-row > label:first-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .item-checkbox-field {
@@ -1811,7 +1846,8 @@ label {
   }
 
   .item-mode-toggle,
-  .new-product-grid {
+  .new-product-grid,
+  .item-primary-row {
     grid-template-columns: 1fr;
   }
 
