@@ -15,7 +15,6 @@ import {
 } from 'firebase/firestore';
 import { normalizeOrderCode } from '../lib/orderCode';
 import { db, isFirebaseConfigured } from '../lib/firebase';
-import { createCatalogProduct } from './productService';
 import {
   calculateOrderPrice,
   type Order,
@@ -279,41 +278,6 @@ function sanitizeOrderInput(payload: OrderInput) {
   };
 }
 
-async function syncPendingCatalogProducts(items: OrderItem[]) {
-  const nextItems: OrderItem[] = [];
-
-  for (const item of items) {
-    if (
-      item.productMode === 'new' &&
-      item.pendingCatalogProduct &&
-      !item.productId
-    ) {
-      const createdProduct = await createCatalogProduct({
-        name: item.pendingCatalogProduct.name,
-        ownerId: item.pendingCatalogProduct.ownerId,
-        price: item.price,
-        cost: item.pendingCatalogProduct.cost,
-        category: item.pendingCatalogProduct.category ?? null,
-        tags: item.pendingCatalogProduct.tags ?? [],
-        trackStock: true,
-        currentStock: item.pendingCatalogProduct.quantity,
-        minStockAlert: item.pendingCatalogProduct.quantity,
-      });
-
-      nextItems.push({
-        ...item,
-        productId: createdProduct.id,
-        catalogSyncedAt: new Date().toISOString(),
-      });
-      continue;
-    }
-
-    nextItems.push(item);
-  }
-
-  return nextItems;
-}
-
 function mapFirestoreOrder(
   id: string,
   data: Record<string, unknown>,
@@ -419,14 +383,7 @@ export async function getOrderByCode(orderCode: string) {
 export async function createOrder(payload: OrderInput) {
   const now = new Date().toISOString();
   const orderCode = generateOrderCode();
-  const itemsToPersist =
-    payload.status === 'printing_ready'
-      ? await syncPendingCatalogProducts(normalizeItems(payload.items))
-      : normalizeItems(payload.items);
-  const sanitizedPayload = sanitizeOrderInput({
-    ...payload,
-    items: itemsToPersist,
-  });
+  const sanitizedPayload = sanitizeOrderInput(payload);
 
   if (!isFirebaseConfigured || !db) {
     const orders = readLocalOrders();
@@ -462,16 +419,7 @@ export async function updateOrder(orderId: string, payload: OrderInput) {
   const now = new Date().toISOString();
 
   if (!isFirebaseConfigured || !db) {
-    const currentOrder = readLocalOrders().find((order) => order.id === orderId);
-    const itemsToPersist =
-      payload.status === 'printing_ready' &&
-      currentOrder?.status !== 'printing_ready'
-        ? await syncPendingCatalogProducts(normalizeItems(payload.items))
-        : normalizeItems(payload.items);
-    const sanitizedPayload = sanitizeOrderInput({
-      ...payload,
-      items: itemsToPersist,
-    });
+    const sanitizedPayload = sanitizeOrderInput(payload);
     const orders = readLocalOrders().map((order) =>
       order.id === orderId
         ? {
@@ -486,19 +434,7 @@ export async function updateOrder(orderId: string, payload: OrderInput) {
     return;
   }
 
-  const currentSnapshot = await getDoc(doc(db, 'orders', orderId));
-  const currentOrder = currentSnapshot.exists()
-    ? mapFirestoreOrder(currentSnapshot.id, currentSnapshot.data())
-    : null;
-  const itemsToPersist =
-    payload.status === 'printing_ready' &&
-    currentOrder?.status !== 'printing_ready'
-      ? await syncPendingCatalogProducts(normalizeItems(payload.items))
-      : normalizeItems(payload.items);
-  const sanitizedPayload = sanitizeOrderInput({
-    ...payload,
-    items: itemsToPersist,
-  });
+  const sanitizedPayload = sanitizeOrderInput(payload);
 
   await updateDoc(doc(db, 'orders', orderId), {
     ...sanitizedPayload,
